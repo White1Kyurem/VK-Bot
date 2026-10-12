@@ -1,48 +1,48 @@
 # VK-Bot
 
-Discord-Bot für Voice-Level, Welcome-Nachrichten und eine automatische Rolle beim Serverbeitritt.
+A Discord bot for voice levels, welcome messages, and an automatic role when members join the server.
 
-## Automatische Beitrittsrolle
+## Automatic join role
 
-In Railway beim Bot-Service unter **Variables** eine Variable hinzufügen:
+Add a variable under **Variables** in the bot's Railway service:
 
 ```dotenv
-AUTO_ROLE_ID=DEINE_ROLLEN_ID
+AUTO_ROLE_ID=YOUR_ROLE_ID
 ```
 
-Die echte numerische Rollen-ID nur in Railway eintragen. In Discord unter
-**Benutzereinstellungen → Erweitert** den Entwicklermodus aktivieren und dann unter
-**Servereinstellungen → Rollen** die gewünschte Rolle rechts anklicken und **Rollen-ID kopieren** wählen.
+Enter the real numeric role ID only in Railway. In Discord, enable Developer Mode under
+**User Settings → Advanced**, then go to **Server Settings → Roles**, right-click the
+desired role, and select **Copy Role ID**.
 
-Der Bot vergibt diese Rolle direkt, sobald ein Mensch dem konfigurierten Server beitritt.
-Sie wird zusätzlich zu vorhandenen Rollen vergeben und bleibt beim Voice-Level-Abgleich erhalten.
-Verwende dafür eine eigene Rolle, die nicht als `LEVEL_x_ROLE_ID` eingetragen ist.
-Bots und bereits vorhandene Mitglieder erhalten durch diese Funktion keine Rolle.
-Die Rollenvergabe funktioniert auch bei ausgeschaltetem Welcomer.
-Ein leeres oder fehlendes `AUTO_ROLE_ID` schaltet die Funktion aus.
+The bot assigns this role as soon as a person joins the configured server.
+It is added alongside existing roles and is kept during voice level synchronization.
+Use a separate role that is not configured as a `LEVEL_x_ROLE_ID`.
+Bots and existing server members are not assigned a role by this feature.
+Role assignment also works when the welcomer is disabled.
+Leaving `AUTO_ROLE_ID` empty or unset disables the feature.
 
-Der Bot braucht **Rollen verwalten**. Seine höchste Rolle muss in der Rollenliste
-**über der Beitrittsrolle** stehen. `@everyone` und Integrationsrollen sind nicht geeignet.
-Mit `/botstatus` können Administratoren die Konfiguration und Berechtigungen prüfen.
+The bot needs **Manage Roles**. Its highest role must be **above the join role** in the
+role list. `@everyone` and managed roles cannot be used.
+Administrators can use `/botstatus` to check the configuration and permissions.
 
-## Discord-Verbindung
+## Discord connection
 
-Im Discord Developer Portal unter **Bot → Privileged Gateway Intents** muss
-**Server Members Intent** aktiviert und mit **Save Changes** gespeichert sein.
-Danach den Railway-Service neu starten. Der Intent ist für den Welcomer und die Auto-Rolle erforderlich.
+In the Discord Developer Portal under **Bot → Privileged Gateway Intents**, enable
+**Server Members Intent** and click **Save Changes**.
+Then restart the Railway service. The welcomer and join role both require this intent.
 
-Die Startlogs zeigen den Bot-Namen, die Bot-ID, die Anwendungs-ID und den direkten
-Portal-Link der Anwendung, deren Token Railway tatsächlich verwendet.
-Falls weiterhin ein Intent-Fehler erscheint, genau diesen Link öffnen und die Einstellung dort prüfen.
-Ein erneutes Einladen des Bots ist dafür nicht nötig.
+Startup logs show the bot's name, bot ID, application ID, and the direct portal link
+for the application whose token Railway is actually using.
+If an intent error still occurs, open that exact link and check the setting there.
+You do not need to invite the bot again to change this setting.
 
-## Bestehende Konfiguration
+## Configuration
 
-Die übrigen Variablen für Server, Level, Welcomer und Datenspeicher sind in
-`.env.example` beschrieben. Echte Tokens gehören ausschließlich in Railway Variables.
-Die SQLite-Datenbank mit den Call-Zeiten muss auf einem Railway-Volume liegen.
+The other variables for the server, levels, welcomer, and data storage are described in
+`.env.example`. Store real tokens only in Railway Variables.
+The SQLite database containing voice times must be stored on a Railway volume.
 
-## Lokale Prüfung
+## Local checks
 
-Nach Installation der Abhängigkeiten: `python -m unittest discover -s tests -v`.
-Diese Prüfungen verbinden sich nicht mit Discord und vergeben keine echten Rollen.
+After installing the dependencies, run `python -m unittest discover -s tests -v`.
+These checks do not connect to Discord or assign real roles.

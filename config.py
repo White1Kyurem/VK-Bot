@@ -30,13 +30,13 @@ def normalize_discord_token(raw: str) -> str:
             break
     token = "".join(character for character in token if not character.isspace())
     if not token or token in {"DEIN_BOT_TOKEN", "YOUR_BOT_TOKEN"}:
-        raise ConfigError("DISCORD_TOKEN fehlt. Den Bot-Token in Railway Variables eintragen.")
+        raise ConfigError("DISCORD_TOKEN is missing. Enter the bot token in Railway Variables.")
     if token.isdigit():
-        raise ConfigError("DISCORD_TOKEN enthält eine reine Zahl. Bitte den Token unter "
-                          "Discord Developer Portal > Bot verwenden; IDs stehen bei GUILD_ID.")
+        raise ConfigError("DISCORD_TOKEN contains only digits. Use the token from "
+                          "Discord Developer Portal > Bot; the server ID belongs in GUILD_ID.")
     if not token.isascii() or any(character in "\"'" for character in token):
-        raise ConfigError("DISCORD_TOKEN enthält ungültige Zeichen oder unvollständige "
-                          "Anführungszeichen. Den Bot-Token nochmals vollständig kopieren.")
+        raise ConfigError("DISCORD_TOKEN contains invalid characters or unmatched quotes. "
+                          "Copy the complete bot token again.")
     return token
 
 
@@ -91,16 +91,16 @@ def _integer(env: Mapping[str, str], name: str, default: int,
     try:
         value = int(env.get(name, str(default)).strip())
     except ValueError as exc:
-        raise ConfigError(f"{name} muss eine ganze Zahl sein.") from exc
+        raise ConfigError(f"{name} must be an integer.") from exc
     if not minimum <= value <= maximum:
-        raise ConfigError(f"{name} muss zwischen {minimum} und {maximum} liegen.")
+        raise ConfigError(f"{name} must be between {minimum} and {maximum}.")
     return value
 
 
 def _snowflake(raw: str, name: str) -> int:
     value = raw.strip()
     if not value.isascii() or not value.isdigit() or not 0 < int(value) < 2**64:
-        raise ConfigError(f"{name}: Bitte eine gültige Discord-ID einsetzen (nur Ziffern).")
+        raise ConfigError(f"{name}: Enter a valid Discord ID (digits only).")
     return int(value)
 
 
@@ -110,7 +110,7 @@ def _bool(env: Mapping[str, str], name: str, default: bool) -> bool:
         return True
     if raw in {"false", "0", "no"}:
         return False
-    raise ConfigError(f"{name} muss true oder false sein.")
+    raise ConfigError(f"{name} must be true or false.")
 
 
 WELCOME_PLACEHOLDERS = {"user", "username", "display_name", "server", "member_count",
@@ -120,13 +120,13 @@ WELCOME_PLACEHOLDERS = {"user", "username", "display_name", "server", "member_co
 def _welcome_text(env: Mapping[str, str], name: str, default: str, limit: int) -> str:
     text = env.get(name, default).replace("\\n", "\n").strip()
     if not text or len(text) > limit:
-        raise ConfigError(f"{name} braucht einen Text mit höchstens {limit} Zeichen.")
+        raise ConfigError(f"{name} requires non-empty text with no more than {limit} characters.")
     try:
         for _, key, spec, conversion in string.Formatter().parse(text):
             if key is not None and (key not in WELCOME_PLACEHOLDERS or spec or conversion):
                 raise ValueError(key)
     except ValueError as exc:
-        raise ConfigError(f"{name}: Ungültiger Platzhalter. Erlaubt: "
+        raise ConfigError(f"{name}: Invalid placeholder. Allowed placeholders: "
                           + ", ".join("{" + key + "}" for key in sorted(WELCOME_PLACEHOLDERS))) from exc
     return text
 
@@ -136,8 +136,8 @@ def _welcome_settings(env: Mapping[str, str]) -> WelcomeSettings:
     enabled = _bool(env, "WELCOME_ENABLED", defaults.enabled)
     channel_raw = env.get("WELCOME_CHANNEL_ID", "").strip()
     if enabled and not channel_raw:
-        raise ConfigError("WELCOME_CHANNEL_ID fehlt. ID des Welcome-Text-Channels eintragen "
-                          "oder WELCOME_ENABLED=false setzen.")
+        raise ConfigError("WELCOME_CHANNEL_ID is missing. Enter the welcome text channel's ID "
+                          "or set WELCOME_ENABLED=false.")
     channel_id = _snowflake(channel_raw, "WELCOME_CHANNEL_ID") if channel_raw else None
     raw_color = env.get("WELCOME_FALLBACK_COLOR", "#8B5CF6").strip().removeprefix("#").removeprefix("0x")
     try:
@@ -145,7 +145,7 @@ def _welcome_settings(env: Mapping[str, str]) -> WelcomeSettings:
             raise ValueError(raw_color)
         color = int(raw_color, 16)
     except ValueError as exc:
-        raise ConfigError("WELCOME_FALLBACK_COLOR braucht eine Hex-Farbe, z. B. #8B5CF6.") from exc
+        raise ConfigError("WELCOME_FALLBACK_COLOR requires a hex color, for example #8B5CF6.") from exc
     return WelcomeSettings(
         enabled=enabled, channel_id=channel_id,
         include_bots=_bool(env, "WELCOME_INCLUDE_BOTS", defaults.include_bots),
@@ -170,36 +170,36 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         try:
             hours = float(raw.replace(",", "."))
         except ValueError as exc:
-            raise ConfigError(f"{name} muss eine Stundenzahl sein, z. B. 5 oder 0.5.") from exc
+            raise ConfigError(f"{name} must be a number of hours, for example 5 or 0.5.") from exc
         if not math.isfinite(hours) or hours < 0 or not math.isfinite(hours * 3600):
-            raise ConfigError(f"{name} muss eine endliche Zahl ab 0 sein.")
+            raise ConfigError(f"{name} must be a finite number greater than or equal to 0.")
         if levels and hours <= levels[-1].hours:
-            raise ConfigError(f"{name} muss grösser als LEVEL_{number - 1}_HOURS sein.")
+            raise ConfigError(f"{name} must be greater than LEVEL_{number - 1}_HOURS.")
         if any(level.role_id == role_id for level in levels):
-            raise ConfigError("Jedes Level braucht eine eigene, unterschiedliche Rollen-ID.")
+            raise ConfigError("Each level requires its own unique role ID.")
         levels.append(Level(number, role_id, hours))
 
     auto_role_raw = env.get("AUTO_ROLE_ID", "").strip()
     auto_role_id = _snowflake(auto_role_raw, "AUTO_ROLE_ID") if auto_role_raw else None
     if auto_role_id is not None and any(level.role_id == auto_role_id for level in levels):
-        raise ConfigError("AUTO_ROLE_ID braucht eine eigene Rolle, die nicht als Level-Rolle "
-                          "verwendet wird. Sonst würde der Level-Abgleich sie wieder entfernen.")
+        raise ConfigError("AUTO_ROLE_ID requires a separate role that is not used as a level role. "
+                          "Otherwise, level synchronization would remove it.")
 
     mode = env.get("ROLE_MODE", "highest").strip().lower()
     if mode not in {"highest", "cumulative"}:
-        raise ConfigError("ROLE_MODE muss highest oder cumulative sein.")
+        raise ConfigError("ROLE_MODE must be highest or cumulative.")
 
     railway = bool(env.get("RAILWAY_ENVIRONMENT_ID") or env.get("RAILWAY_SERVICE_ID"))
     mount = env.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
     data_dir = Path(env.get("DATA_DIR", "").strip() or mount or "./data").resolve()
     if railway:
         if not mount:
-            raise ConfigError("Railway: Bitte zuerst ein Volume am Bot-Service unter /data "
-                              "anlegen. Ohne Volume werden keine Zeiten gespeichert.")
+            raise ConfigError("Railway: Create a volume mounted at /data for the bot service first. "
+                              "Voice times cannot be saved without a volume.")
         mount_dir = Path(mount).resolve()
         if not data_dir.is_relative_to(mount_dir):
-            raise ConfigError("DATA_DIR muss auf dem Railway-Volume liegen. "
-                              "Bei Mount /data bitte DATA_DIR=/data einstellen.")
+            raise ConfigError("DATA_DIR must be on the Railway volume. "
+                              "For a volume mounted at /data, set DATA_DIR=/data.")
 
     ignored = frozenset(
         _snowflake(value, "IGNORED_CHANNEL_IDS")

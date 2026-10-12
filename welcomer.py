@@ -119,7 +119,7 @@ def render_card(avatar_bytes: bytes | None, text: str, fallback: int) -> tuple[b
             with Image.open(io.BytesIO(avatar_bytes)) as source:
                 avatar = ImageOps.exif_transpose(source).convert("RGBA")
         except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
-            log.warning("Profilbild nicht lesbar; Welcome nutzt die Ersatzfarbe.")
+            log.warning("The avatar could not be read; the welcome card is using the fallback color.")
     accent = dominant_color(avatar, fallback) if avatar else fallback_rgb
     color = accent[0] << 16 | accent[1] << 8 | accent[2]
     width, height = CARD_SIZE[0] * SCALE, CARD_SIZE[1] * SCALE
@@ -161,16 +161,16 @@ def welcome_problems(guild: discord.Guild, settings: WelcomeSettings) -> list[st
     if not settings.enabled:
         return []
     if not BACKGROUND_PATH.is_file():
-        return ["Welcome-Hintergrund fehlt. Den assets-Ordner vollständig nach GitHub hochladen."]
+        return ["The welcome background is missing. Upload the complete assets folder to GitHub."]
     channel = guild.get_channel(settings.channel_id)
     if not isinstance(channel, discord.TextChannel):
-        return ["WELCOME_CHANNEL_ID muss auf einen Text-Channel in diesem Server zeigen."]
+        return ["WELCOME_CHANNEL_ID must point to a text channel on this server."]
     if guild.me is None:
-        return ["Das Bot-Mitglied konnte nicht geladen werden."]
+        return ["The bot's server member could not be loaded."]
     permissions = channel.permissions_for(guild.me)
-    names = {"view_channel": "Kanäle ansehen", "send_messages": "Nachrichten senden",
-             "embed_links": "Links einbetten", "attach_files": "Dateien anhängen"}
-    return [f"Im Welcome-Channel fehlt: {label}." for flag, label in names.items()
+    names = {"view_channel": "View Channels", "send_messages": "Send Messages",
+             "embed_links": "Embed Links", "attach_files": "Attach Files"}
+    return [f"Missing permission in the welcome channel: {label}." for flag, label in names.items()
             if not getattr(permissions, flag)]
 
 
@@ -195,7 +195,7 @@ async def send_welcome(member: discord.Member, settings: Settings) -> bool:
         avatar = member.display_avatar.with_format("png").with_size(256)
         avatar_bytes = await asyncio.wait_for(avatar.read(), timeout=10)
     except (discord.HTTPException, OSError, ValueError, asyncio.TimeoutError):
-        log.warning("Profilbild für Nutzer %s nicht verfügbar; Welcome nutzt die Ersatzfarbe.", member.id)
+        log.warning("Avatar unavailable for user %s; the welcome card is using the fallback color.", member.id)
     png, color = await asyncio.to_thread(render_card, avatar_bytes, text, welcome.fallback_color)
     filename = f"welcome-{member.id}.png"
     file = discord.File(io.BytesIO(png), filename=filename)
@@ -208,7 +208,7 @@ async def send_welcome(member: discord.Member, settings: Settings) -> bool:
         await channel.send(content=content, embed=embed, file=file, allowed_mentions=mentions)
         return True
     except discord.HTTPException:
-        log.warning("Welcome konnte nicht gesendet werden. Channel-Berechtigungen prüfen.", exc_info=True)
+        log.warning("The welcome message could not be sent. Check channel permissions.", exc_info=True)
         return False
     finally:
         file.close()

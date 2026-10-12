@@ -18,7 +18,7 @@ class Store:
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
         if version > 1:
             self.db.close()
-            raise RuntimeError("Die Datenbank ist neuer als diese Bot-Version.")
+            raise RuntimeError("The database schema is newer than this bot version.")
         with self.db:
             self.db.execute("""
                 CREATE TABLE IF NOT EXISTS voice_stats (
@@ -42,7 +42,7 @@ class Store:
         rows = []
         for user_id, seconds in deltas.items():
             if not math.isfinite(seconds) or seconds < 0:
-                raise ValueError("Zeitdifferenzen müssen endlich und nicht negativ sein.")
+                raise ValueError("Time increments must be finite and non-negative.")
             if seconds > 0:
                 rows.append((str(guild_id), str(user_id), seconds))
         if not rows:
