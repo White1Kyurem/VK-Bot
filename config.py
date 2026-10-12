@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+import hashlib
 import os
+import re
 import string
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +14,35 @@ from typing import Mapping
 
 class ConfigError(ValueError):
     pass
+
+
+def normalize_discord_token(raw: str) -> str:
+    """Accept common copy/paste wrappers without exposing credential contents."""
+    invisible = "\u200b\u200c\u200d\u200e\u200f\u2060\ufeff"
+    token = raw.translate(dict.fromkeys(map(ord, invisible))).strip()
+    for _ in range(8):
+        before = token
+        token = re.sub(r"^DISCORD_TOKEN\s*=\s*", "", token, flags=re.IGNORECASE).strip()
+        if len(token) >= 2 and token[0] in "\"'" and token[-1] == token[0]:
+            token = token[1:-1].strip()
+        token = re.sub(r"^Bot\s+", "", token, flags=re.IGNORECASE).strip()
+        if token == before:
+            break
+    token = "".join(character for character in token if not character.isspace())
+    if not token or token in {"DEIN_BOT_TOKEN", "YOUR_BOT_TOKEN"}:
+        raise ConfigError("DISCORD_TOKEN fehlt. Den Bot-Token in Railway Variables eintragen.")
+    if token.isdigit():
+        raise ConfigError("DISCORD_TOKEN enthält eine reine Zahl. Bitte den Token unter "
+                          "Discord Developer Portal > Bot verwenden; IDs stehen bei GUILD_ID.")
+    if not token.isascii() or any(character in "\"'" for character in token):
+        raise ConfigError("DISCORD_TOKEN enthält ungültige Zeichen oder unvollständige "
+                          "Anführungszeichen. Den Bot-Token nochmals vollständig kopieren.")
+    return token
+
+
+def token_fingerprint(token: str) -> str:
+    """A one-way digest to compare deployments; never return token characters."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
 
 
 @dataclass(frozen=True)
@@ -125,9 +156,7 @@ def _welcome_settings(env: Mapping[str, str]) -> WelcomeSettings:
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
-    token = env.get("DISCORD_TOKEN", "").strip()
-    if not token or token in {"DEIN_BOT_TOKEN", "YOUR_BOT_TOKEN"}:
-        raise ConfigError("DISCORD_TOKEN fehlt. Den Bot-Token in Railway Variables eintragen.")
+    token = normalize_discord_token(env.get("DISCORD_TOKEN", ""))
     guild_id = _snowflake(env.get("GUILD_ID", ""), "GUILD_ID")
     count = _integer(env, "LEVEL_COUNT", 5, 1, 25)
     default_hours = (1, 5, 15, 40, 100)

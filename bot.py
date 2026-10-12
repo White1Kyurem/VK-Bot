@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sqlite3
 import sys
@@ -14,13 +15,35 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
-from config import ConfigError, Settings, achieved_level, load_settings, role_changes
+from config import (ConfigError, Settings, achieved_level, load_settings, role_changes,
+                    normalize_discord_token, token_fingerprint)
 from storage import Store
 from tracking import Tracker, VoiceParticipant, eligible_users
 from welcomer import send_welcome, welcome_problems
 
 log = logging.getLogger("voice-level-bot")
 PURPLE = discord.Colour(0x8B5CF6)
+START_VERSION = "2026-10-12-auth-check"
+
+
+def log_token_check(raw: str, token: str) -> None:
+    log.info("Startversion: %s | DISCORD_TOKEN: %s Zeichen | Token-Prüfwert: %s",
+             START_VERSION, len(token), token_fingerprint(token))
+    if raw.strip() != token:
+        log.warning("Einfügeformat des Tokens automatisch bereinigt "
+                    "(z. B. Anführungszeichen, Bot-Präfix oder Leerzeichen).")
+    if token.count(".") != 2:
+        log.warning("Ungewöhnliches Tokenformat. Im Developer Portal den Wert unter Bot "
+                    "verwenden. Client Secret und Public Key gehören nicht in DISCORD_TOKEN.")
+
+
+async def check_token(token: str) -> None:
+    """A REST login check; no Gateway, guild commands, or database are involved."""
+    client = discord.Client(intents=discord.Intents.none())
+    async with client:
+        await client.login(token)
+        log.info("Token von Discord akzeptiert: Bot=%s | Bot-ID=%s | Anwendungs-ID=%s",
+                 client.user, client.user.id, client.application_id)
 
 
 def duration(seconds: float) -> str:
@@ -510,11 +533,20 @@ async def run(settings: Settings) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Discord Voice-Level-Bot")
-    parser.add_argument("--check-config", action="store_true", help="Variablen prüfen, ohne Discord-Login")
+    checks = parser.add_mutually_exclusive_group()
+    checks.add_argument("--check-config", action="store_true", help="Variablen prüfen, ohne Discord-Login")
+    checks.add_argument("--check-token", action="store_true",
+                        help="Nur den Bot-Token prüfen, ohne Server-Verbindung oder Datenbank")
     args = parser.parse_args()
     load_dotenv(override=False)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
+        raw_token = os.environ.get("DISCORD_TOKEN", "")
+        token = normalize_discord_token(raw_token)
+        log_token_check(raw_token, token)
+        if args.check_token:
+            asyncio.run(check_token(token))
+            return 0
         settings = load_settings()
         if args.check_config:
             print(f"Konfiguration gültig: {len(settings.levels)} Levels, "
@@ -528,8 +560,10 @@ def main() -> int:
     except discord.PrivilegedIntentsRequired:
         log.error("Im Discord Developer Portal bitte den SERVER MEMBERS INTENT aktivieren.")
         return 1
-    except discord.LoginFailure:
-        log.error("Discord-Login fehlgeschlagen. DISCORD_TOKEN prüfen.")
+    except discord.LoginFailure as error:
+        status = getattr(error.__cause__, "status", None)
+        log.error("Discord-Login abgelehnt%s. DISCORD_TOKEN in diesem Railway-Service prüfen "
+                  "und die Variablen-Änderungen deployen.", f" (HTTP {status})" if status else "")
         return 1
     except KeyboardInterrupt:
         return 0
