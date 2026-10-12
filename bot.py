@@ -23,7 +23,7 @@ from welcomer import send_welcome, welcome_problems
 
 log = logging.getLogger("voice-level-bot")
 PURPLE = discord.Colour(0x8B5CF6)
-START_VERSION = "2026-10-12-auth-check"
+START_VERSION = "2026-10-12-auto-role"
 
 
 def log_token_check(raw: str, token: str) -> None:
@@ -183,7 +183,62 @@ class VoiceLevelBot(discord.Client):
                 log.info("Alle %s Level-Rollen sind vorhanden und verwaltbar.", len(self.settings.levels))
         return problems
 
+    def auto_role_problems(self, guild: discord.Guild) -> list[str]:
+        role_id = self.settings.auto_role_id
+        if role_id is None:
+            return []
+        role = guild.get_role(role_id)
+        if role is None:
+            return [f"AUTO_ROLE_ID: Rolle {role_id} existiert auf diesem Server nicht."]
+        if role.is_default() or role.managed:
+            return ["AUTO_ROLE_ID: @everyone und Integrationsrollen sind nicht zuweisbar."]
+        me = guild.me
+        if me is None:
+            return ["Auto-Rolle: Bot-Mitglied konnte nicht geladen werden."]
+        problems = []
+        if not me.guild_permissions.manage_roles:
+            problems.append("Auto-Rolle: Dem Bot fehlt die Berechtigung ‚Rollen verwalten‘.")
+        if role >= me.top_role:
+            problems.append(f"Auto-Rolle: Die Bot-Rolle muss über ‚{role.name}‘ stehen.")
+        return problems
+
+    async def assign_auto_role(self, member: discord.Member) -> bool:
+        if (self.settings.auto_role_id is None or member.bot or self.closing
+                or member.guild.id != self.settings.guild_id):
+            return False
+        if problems := self.auto_role_problems(member.guild):
+            for problem in problems:
+                log.warning("%s | Nutzer-ID=%s", problem, member.id)
+            return False
+        role = member.guild.get_role(self.settings.auto_role_id)
+        if role is None:
+            return False  # The role may have been deleted during a guild update.
+        if any(current.id == role.id for current in member.roles):
+            return True
+        try:
+            await member.add_roles(role, reason="Voice-Level-Bot: automatische Rolle beim Serverbeitritt",
+                                   atomic=True)
+        except discord.NotFound:
+            log.info("Auto-Rolle nicht vergeben: Mitglied oder Rolle existiert nicht mehr. "
+                     "Nutzer-ID=%s | Rollen-ID=%s", member.id, role.id)
+            return False
+        except discord.Forbidden:
+            log.warning("Auto-Rolle abgelehnt. ‚Rollen verwalten‘ und Rollenreihenfolge prüfen. "
+                        "Nutzer-ID=%s | Rollen-ID=%s", member.id, role.id)
+            return False
+        except discord.HTTPException as error:
+            log.warning("Auto-Rolle konnte nicht vergeben werden: %s | Nutzer-ID=%s | Rollen-ID=%s",
+                        error, member.id, role.id)
+            return False
+        log.info("Auto-Rolle vergeben: %s | Nutzer-ID=%s | Rollen-ID=%s", role.name, member.id, role.id)
+        return True
+
     async def setup_hook(self) -> None:
+        # REST login succeeded here, even if Discord subsequently rejects the Gateway intents.
+        log.info("Discord-Anmeldung erfolgreich: Bot=%s | Bot-ID=%s | Anwendungs-ID=%s",
+                 self.user, self.user.id, self.application_id)
+        log.info("Intent-Einstellungen für genau diesen Bot: "
+                 "https://discord.com/developers/applications/%s/bot", self.application_id)
         commands = await self.tree.sync(guild=discord.Object(id=self.settings.guild_id))
         log.info("%s Slash-Commands für Server %s registriert.", len(commands), self.settings.guild_id)
         self.background = [
@@ -203,6 +258,10 @@ class VoiceLevelBot(discord.Client):
             return
         self.resume_tracking()
         self.report_problems(guild)
+        for problem in self.auto_role_problems(guild):
+            log.warning(problem)
+        if self.settings.auto_role_id is not None:
+            log.info("Auto-Rolle für neue Mitglieder konfiguriert: %s", self.settings.auto_role_id)
         for problem in welcome_problems(guild, self.settings.welcome):
             log.warning(problem)
         log.info("Bot online: %s | Server: %s | Aktive Zeitmessungen: %s",
@@ -242,6 +301,7 @@ class VoiceLevelBot(discord.Client):
 
     async def on_member_join(self, member: discord.Member) -> None:
         if member.guild.id == self.settings.guild_id and not self.closing:
+            await self.assign_auto_role(member)
             if not member.bot:
                 self.store.ensure_users(self.settings.guild_id, {member.id})
                 self.enqueue(member.id)
@@ -460,6 +520,11 @@ class VoiceLevelBot(discord.Client):
             embed.add_field(name="Dauerhafte Daten", value="Railway-Volume" if self.settings.railway
                             else "Lokaler Datenordner")
             embed.add_field(name="Mindestanzahl Menschen", value=str(self.settings.min_humans))
+            auto_role_status = "Ausgeschaltet (AUTO_ROLE_ID ist leer)"
+            if self.settings.auto_role_id is not None:
+                auto_role_status = "\n".join(self.auto_role_problems(interaction.guild)) or \
+                                   f"Aktiv: <@&{self.settings.auto_role_id}> bei neuen Serverbeitritten"
+            embed.add_field(name="Auto-Rolle", value=auto_role_status[:1024], inline=False)
             welcome = self.settings.welcome
             welcome_status = "Ausgeschaltet"
             if welcome.enabled:
@@ -558,7 +623,10 @@ def main() -> int:
         log.error("Konfigurationsfehler: %s", error)
         return 1
     except discord.PrivilegedIntentsRequired:
-        log.error("Im Discord Developer Portal bitte den SERVER MEMBERS INTENT aktivieren.")
+        log.error("Discord lehnt den SERVER MEMBERS INTENT ab. Den oben geloggten Portal-Link "
+                  "öffnen, bei genau dieser Anwendung unter Bot den Server Members Intent "
+                  "aktivieren, Save Changes drücken und den Railway-Service neu starten. "
+                  "Welcomer und Auto-Rolle benötigen diesen Intent.")
         return 1
     except discord.LoginFailure as error:
         status = getattr(error.__cause__, "status", None)

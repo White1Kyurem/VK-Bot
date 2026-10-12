@@ -83,6 +83,7 @@ class Settings:
     level_up_channel_id: int | None
     railway: bool
     welcome: WelcomeSettings = field(default_factory=WelcomeSettings)
+    auto_role_id: int | None = None
 
 
 def _integer(env: Mapping[str, str], name: str, default: int,
@@ -178,6 +179,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Jedes Level braucht eine eigene, unterschiedliche Rollen-ID.")
         levels.append(Level(number, role_id, hours))
 
+    auto_role_raw = env.get("AUTO_ROLE_ID", "").strip()
+    auto_role_id = _snowflake(auto_role_raw, "AUTO_ROLE_ID") if auto_role_raw else None
+    if auto_role_id is not None and any(level.role_id == auto_role_id for level in levels):
+        raise ConfigError("AUTO_ROLE_ID braucht eine eigene Rolle, die nicht als Level-Rolle "
+                          "verwendet wird. Sonst würde der Level-Abgleich sie wieder entfernen.")
+
     mode = env.get("ROLE_MODE", "highest").strip().lower()
     if mode not in {"highest", "cumulative"}:
         raise ConfigError("ROLE_MODE muss highest oder cumulative sein.")
@@ -210,6 +217,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         level_up_channel_id=_snowflake(channel_raw, "LEVEL_UP_CHANNEL_ID") if channel_raw else None,
         railway=railway,
         welcome=_welcome_settings(env),
+        auto_role_id=auto_role_id,
     )
 
 
