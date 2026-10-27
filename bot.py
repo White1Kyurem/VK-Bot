@@ -15,7 +15,7 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
-from config import (ConfigError, Settings, achieved_level, load_settings, role_changes,
+from config import (ConfigError, Settings, achieved_level, level_name, load_settings, role_changes,
                     normalize_discord_token, token_fingerprint)
 from storage import Store
 from tracking import Tracker, VoiceParticipant, eligible_users
@@ -23,7 +23,7 @@ from welcomer import send_welcome, welcome_problems
 
 log = logging.getLogger("voice-level-bot")
 PURPLE = discord.Colour(0x8B5CF6)
-START_VERSION = "2026-10-12-english-auto-role"
+START_VERSION = "2026-10-27-og-levels"
 
 
 def log_token_check(raw: str, token: str) -> None:
@@ -165,11 +165,11 @@ class VoiceLevelBot(discord.Client):
         for level in self.settings.levels:
             role = guild.get_role(level.role_id)
             if role is None:
-                problems.append(f"Level {level.number}: Role ID {level.role_id} does not exist.")
+                problems.append(f"{level_name(level.number)}: Role ID {level.role_id} does not exist.")
             elif role.is_default() or role.managed:
-                problems.append(f"Level {level.number}: @everyone and managed roles are not allowed.")
+                problems.append(f"{level_name(level.number)}: @everyone and managed roles are not allowed.")
             elif role >= me.top_role:
-                problems.append(f"Level {level.number}: The bot's highest role must be above '{role.name}'.")
+                problems.append(f"{level_name(level.number)}: The bot's highest role must be above '{role.name}'.")
         return problems
 
     def report_problems(self, guild: discord.Guild) -> list[str]:
@@ -239,6 +239,8 @@ class VoiceLevelBot(discord.Client):
                  self.user, self.user.id, self.application_id)
         log.info("Intent settings for this bot: "
                  "https://discord.com/developers/applications/%s/bot", self.application_id)
+        log.info("Configured %s voice levels: %s", len(self.settings.levels),
+                 ", ".join(level_name(level.number) for level in self.settings.levels))
         commands = await self.tree.sync(guild=discord.Object(id=self.settings.guild_id))
         log.info("Registered %s slash commands for server %s.", len(commands), self.settings.guild_id)
         self.background = [
@@ -429,7 +431,7 @@ class VoiceLevelBot(discord.Client):
         if reached > previous:
             # Persist before notifying: restarts do not re-announce old awards.
             self.store.mark_awarded(guild.id, user_id, reached)
-            log.info("User %s reached Level %s (%s).", user_id, reached,
+            log.info("User %s reached %s (%s).", user_id, level_name(reached),
                      duration(self.tracker.total(user_id)))
             await self.announce(member, reached)
 
@@ -443,7 +445,7 @@ class VoiceLevelBot(discord.Client):
             return
         role = member.guild.get_role(self.settings.levels[level_number - 1].role_id)
         embed = discord.Embed(title="New Voice Level!", colour=PURPLE,
-                              description=f"{member.mention} reached **Level {level_number}**!\n"
+                              description=f"{member.mention} reached **{level_name(level_number)}**!\n"
                                           f"Role: {role.mention}\n"
                                           f"Total voice time: **{duration(self.tracker.total(member.id))}**")
         try:
@@ -471,12 +473,12 @@ class VoiceLevelBot(discord.Client):
             embed.add_field(name="Total Voice Time", value=duration(total), inline=False)
             role_text = self.settings.levels[reached - 1].role_id if reached else None
             embed.add_field(name="Current Level",
-                            value=f"Level {reached}" + (f" · <@&{role_text}>" if role_text else ""))
+                            value=level_name(reached) + (f" · <@&{role_text}>" if role_text else ""))
             embed.add_field(name="Time Tracking",
                             value="Active" if member.id in self.tracker.active else "Paused")
             if reached < len(self.settings.levels):
                 goal = self.settings.levels[reached]
-                embed.add_field(name=f"Next: Level {goal.number}",
+                embed.add_field(name=f"Next: {level_name(goal.number)}",
                                 value=f"**{duration(goal.seconds - total)}** of voice time remaining", inline=False)
             else:
                 embed.add_field(name="Progress", value="Highest configured level reached!", inline=False)
@@ -490,7 +492,7 @@ class VoiceLevelBot(discord.Client):
         async def leaderboard(interaction: discord.Interaction):
             top = sorted(self.tracker.totals().items(), key=lambda row: (-row[1], row[0]))[:10]
             lines = [f"**{index}.** <@{user_id}> — {duration(total)} "
-                     f"· Level {achieved_level(total, self.settings.levels)}"
+                     f"· {level_name(achieved_level(total, self.settings.levels))}"
                      for index, (user_id, total) in enumerate(top, start=1) if total > 0]
             embed = discord.Embed(title="Voice Leaderboard", colour=PURPLE,
                                   description="\n".join(lines) or "No voice time recorded yet.")
@@ -499,7 +501,7 @@ class VoiceLevelBot(discord.Client):
         @self.tree.command(name="levels", description="Show all level roles and required voice hours.", guild=guild)
         @app_commands.guild_only()
         async def levels(interaction: discord.Interaction):
-            text = "\n".join(f"**Level {level.number}** · <@&{level.role_id}> · "
+            text = "\n".join(f"**{level_name(level.number)}** · <@&{level.role_id}> · "
                              f"from **{level.hours:g} total hours**" for level in self.settings.levels)
             embed = discord.Embed(title="Voice Levels", description=text, colour=PURPLE)
             embed.set_footer(text="Each level requires a total amount of voice time, not extra hours per level.")
@@ -515,6 +517,7 @@ class VoiceLevelBot(discord.Client):
             embed.add_field(name="Roles", value="\n".join(problems)[:1024] or "All roles can be managed.",
                             inline=False)
             embed.add_field(name="Active Voice Timers", value=str(len(self.tracker.active)))
+            embed.add_field(name="Configured Levels", value=str(len(self.settings.levels)))
             embed.add_field(name="Role Mode", value=self.settings.role_mode)
             embed.add_field(name="Save Interval", value=f"{self.settings.save_interval} seconds")
             embed.add_field(name="Persistent Storage", value="Railway Volume" if self.settings.railway

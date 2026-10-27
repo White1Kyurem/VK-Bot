@@ -2,6 +2,45 @@
 
 A Discord bot for voice levels, welcome messages, and an automatic role when members join the server.
 
+## Eight voice levels
+
+The eight-level setup has five regular levels followed by three OG levels:
+
+| Stage | Display name | Role variable | Total hours variable |
+| --- | --- | --- | --- |
+| 1–5 | Level 1–5 | `LEVEL_1_ROLE_ID` through `LEVEL_5_ROLE_ID` | `LEVEL_1_HOURS` through `LEVEL_5_HOURS` |
+| 6 | OG Level 1 | `LEVEL_6_ROLE_ID` | `LEVEL_6_HOURS` |
+| 7 | OG Level 2 | `LEVEL_7_ROLE_ID` | `LEVEL_7_HOURS` |
+| 8 | OG Level 3 | `LEVEL_8_ROLE_ID` | `LEVEL_8_HOURS` |
+
+To upgrade an existing installation, keep the current variables for Levels 1–5.
+Create the three OG roles in Discord, then set the following in Railway Variables:
+
+```dotenv
+LEVEL_COUNT=8
+LEVEL_6_ROLE_ID=YOUR_OG_LEVEL_1_ROLE_ID
+LEVEL_6_HOURS=200
+LEVEL_7_ROLE_ID=YOUR_OG_LEVEL_2_ROLE_ID
+LEVEL_7_HOURS=350
+LEVEL_8_ROLE_ID=YOUR_OG_LEVEL_3_ROLE_ID
+LEVEL_8_HOURS=500
+```
+
+The values **200, 350, and 500 hours are examples**. Choose your own total-hour thresholds.
+They must increase strictly, and `LEVEL_6_HOURS` must exceed the current `LEVEL_5_HOURS`.
+Each OG role needs a unique numeric role ID. The bot's highest role must be above all eight
+level roles and the join role.
+
+Deploy the updated variables and code, check `/botstatus` for **Configured Levels: 8**,
+then run `/levels-sync` to apply the correct roles from saved voice time.
+The OG names appear in `/rank`, `/levels`, `/leaderboard`, level-up announcements, and logs.
+With `ROLE_MODE=highest`, only the highest earned level role is kept. With `cumulative`,
+all earned level roles are kept. The independent join role is preserved in either mode.
+
+Saved voice time and awarded stages keep their existing numeric values; no database reset
+or migration is needed. For compatibility, an existing installation without `LEVEL_COUNT`
+still defaults to five levels until the eight-level configuration is supplied.
+
 ## Automatic join role
 
 Add a variable under **Variables** in the bot's Railway service:

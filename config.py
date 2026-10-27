@@ -155,10 +155,16 @@ def _welcome_settings(env: Mapping[str, str]) -> WelcomeSettings:
     )
 
 
+def level_name(number: int) -> str:
+    """Keep stored level numbers continuous while displaying OG tiers after Level 5."""
+    return f"OG Level {number - 5}" if number > 5 else f"Level {number}"
+
+
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
     token = normalize_discord_token(env.get("DISCORD_TOKEN", ""))
     guild_id = _snowflake(env.get("GUILD_ID", ""), "GUILD_ID")
+    # Existing installations keep working until the extra roles and hours are configured.
     count = _integer(env, "LEVEL_COUNT", 5, 1, 25)
     default_hours = (1, 5, 15, 40, 100)
     levels: list[Level] = []
@@ -167,6 +173,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
                              f"LEVEL_{number}_ROLE_ID")
         name = f"LEVEL_{number}_HOURS"
         raw = env.get(name, str(default_hours[number - 1]) if number <= 5 else "").strip()
+        if number > 5 and not raw:
+            raise ConfigError(f"{name} is required for {level_name(number)}. "
+                              f"Set the total voice hours above LEVEL_{number - 1}_HOURS.")
         try:
             hours = float(raw.replace(",", "."))
         except ValueError as exc:
